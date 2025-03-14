@@ -1,260 +1,126 @@
-import { Repository } from 'typeorm';
+import { Repository, Like, MoreThan } from 'typeorm';
 import { AppDataSource } from '../database/db';
 import { Employee } from '../entities/employee.entity';
 import { Department } from '../entities/department.entity';
-import { Like } from 'typeorm';
-import { Project } from '../entities/project.entity'; 
+import { Project } from '../entities/project.entity';
+import { parse } from 'csv-parse';
+import fs from 'fs';
 
 export class EmployeeService {
-    private employeeRepository: Repository<Employee>;
-    private departmentRepository: Repository<Department>;
+    private employeeRepository: Repository<Employee> = AppDataSource.getRepository(Employee);
+    private departmentRepository: Repository<Department> = AppDataSource.getRepository(Department);
+    private projectRepository: Repository<Project> = AppDataSource.getRepository(Project);
 
-    constructor() {
-        this.employeeRepository = AppDataSource.getRepository(Employee);
-        this.departmentRepository = AppDataSource.getRepository(Department);
-        this.projectRepository = AppDataSource.getRepository(Project)
-    }
-
-    async getAllWithPagination(page: number = 1, limit: number = 10) {
-        try {
-            const [employees, total] = await this.employeeRepository.findAndCount({
-                where: { isActive: true },
-                relations: ['department'],
-                skip: (page - 1) * limit,
-                take: limit,
-                order: {
-                    id: 'ASC'
-                }
-            });
-
-            // Format the response to exactly match the example
-            return employees.map(employee => ({
-                id: employee.id,
-                name: employee.name,
-                position: employee.position,
-                department: {
-                    id: employee.department?.id,
-                    name: employee.department?.name
-                }
-            }));
-
-        } catch (error) {
-            console.error('Error fetching employees:', error);
-            throw error;
-        }
-    }
-    async updateSalary(id: number, salary: number) {
-        // Find the employee
-        const employee = await this.employeeRepository.findOne({
-            where: { id },
-            relations: ['department']
-        });
-
-        if (!employee) {
-            throw new Error('Employee not found');
-        }
-
-        // Update salary
-        employee.salary = salary;
-        
-        // Save changes
-        await this.employeeRepository.save(employee);
-
-        // Return formatted response
-        return {
-            id: employee.id,
-            name: employee.name,
-            position: employee.position,
-            salary: employee.salary,
-            department: {
-                id: employee.department?.id,
-                name: employee.department?.name
-            }
-        };
-    }
-
-    async softDelete(id: number) {
-        // Find the employee
-        const employee = await this.employeeRepository.findOne({
-            where: { id },
-            relations: ['department']
-        });
-
-        if (!employee) {
-            throw new Error('Employee not found');
-        }
-
-        // Set isActive to false (soft delete)
-        employee.isActive = false;
-        
-        // Save the changes
-        await this.employeeRepository.save(employee);
-
-        // Return formatted response
-        return {
-            id: employee.id,
-            name: employee.name,
-            position: employee.position,
-            department: {
-                id: employee.department?.id,
-                name: employee.department?.name
-            },
-            isActive: employee.isActive
-        };
-    }
-
-    // Update getAllWithPagination to only return active employees
-    async getAllWithPagination(page: number = 1, limit: number = 10) {
-        const [employees, total] = await this.employeeRepository.findAndCount({
-            where: { isActive: true }, // Only get active employees
-            relations: ['department'],
+    async getAll(page: number = 1, limit: number = 10) {
+        return this.employeeRepository.find({
+            relations: ['department', 'projects'],
             skip: (page - 1) * limit,
-            take: limit
+            take: limit,
+            where: { isActive: true }
         });
-
-        return employees.map(employee => ({
-            id: employee.id,
-            name: employee.name,
-            position: employee.position,
-            department: {
-                id: employee.department?.id,
-                name: employee.department?.name
-            }
-        }));
     }
-
-
-    async create(employeeData: {
-        name: string;
-        position: string;
-        departmentId: number;
-        hireDate: string;
-    }) {
-        try {
-            const department = await this.departmentRepository.findOne({
-                where: { id: parseInt(employeeData.departmentId.toString()) }
-            });
-
-            if (!department) {
-                throw new Error('Department not found');
-            }
-
-            const employee = this.employeeRepository.create({
-                name: employeeData.name,
-                position: employeeData.position,
-                department: department,
-                hireDate: new Date(employeeData.hireDate),
-                isActive: true
-            });
-
-            const savedEmployee = await this.employeeRepository.save(employee);
-
-            return {
-                id: savedEmployee.id,
-                name: savedEmployee.name,
-                position: savedEmployee.position,
-                department: {
-                    id: department.id,
-                    name: department.name
-                },
-                hireDate: savedEmployee.hireDate
-            };
-        } catch (error) {
-            console.error('Error in create service:', error);
-            throw error;
-        }
-    }
-
 
     async searchByName(name: string) {
-        try {
-            console.log('Searching for employees with name:', name);
-            
-            const employees = await this.employeeRepository.find({
-                where: {
-                    name: Like(`%${name}%`),  // Case-sensitive search
-                    isActive: true  // Only search active employees
-                },
-                relations: ['department'],
-                order: {
-                    name: 'ASC'  // Sort results alphabetically
-                }
-            });
-    
-            console.log(`Found ${employees.length} employees`);
-    
-            // Format response to match the example
-            return employees.map(employee => ({
-                id: employee.id,
-                name: employee.name,
-                position: employee.position,
-                department: {
-                    id: employee.department?.id,
-                    name: employee.department?.name
-                }
-            }));
-        } catch (error) {
-            console.error('Error searching employees:', error);
-            throw error;
-        }
+        return this.employeeRepository.find({
+            where: {
+                name: Like(`%${name}%`),
+                isActive: true
+            },
+            relations: ['department']
+        });
+    }
+
+
+    // async getById(){
+    //     return this.employeeRepository.find({
+    //      where: {id},
+    //      relations:["department"]
+    //     })
+    // }
+    async updateSalary(id: number, salary: number) {
+        const employee = await this.getById(id);
+        if (!employee) throw new Error('Employee not found');
+        
+        employee.salary = salary;
+        return this.employeeRepository.save(employee);
+    }
+
+    async calculateTenure(id: number) {
+        const employee = await this.getById(id);
+        if (!employee) throw new Error('Employee not found');
+
+        const hireDate = new Date(employee.hireDate);
+        const today = new Date();
+        const tenure = today.getFullYear() - hireDate.getFullYear();
+
+        return { years: tenure };
     }
 
     async assignToProject(employeeId: number, projectId: number) {
-        try {
-            // Find the employee
-            const employee = await this.employeeRepository.findOne({
-                where: { id: employeeId },
-                relations: ['projects', 'department']
+        const employee = await this.employeeRepository.findOne({
+            where: { id: employeeId },
+            relations: ['projects']
+        });
+        if (!employee) throw new Error('Employee not found');
+
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId }
+        });
+        if (!project) throw new Error('Project not found');
+
+        employee.projects = [...employee.projects, project];
+        return this.employeeRepository.save(employee);
+    }
+
+    async transferDepartment(employeeId: number, newDepartmentId: number) {
+        const department = await this.departmentRepository.findOne({
+            where: { id: newDepartmentId }
+        });
+        if (!department) throw new Error('Department not found');
+
+        const employee = await this.getById(employeeId);
+        if (!employee) throw new Error('Employee not found');
+
+        employee.department = department;
+        employee.departmentId = newDepartmentId;
+        return this.employeeRepository.save(employee);
+    }
+
+    async bulkImport(filePath: string) {
+        const results = [];
+        const parser = fs.createReadStream(filePath).pipe(parse({
+            columns: true,
+            skip_empty_lines: true
+        }));
+
+        for await (const record of parser) {
+            const employee = this.employeeRepository.create({
+                name: record.name,
+                position: record.position,
+                departmentId: parseInt(record.departmentId),
+                hireDate: new Date(record.hireDate)
             });
-
-            if (!employee) {
-                throw new Error('Employee not found');
-            }
-
-            // Find the project
-            const project = await this.projectRepository.findOne({
-                where: { id: projectId }
-            });
-
-            if (!project) {
-                throw new Error('Project not found');
-            }
-
-            // Initialize projects array if it doesn't exist
-            if (!employee.projects) {
-                employee.projects = [];
-            }
-
-            // Check if the employee is already assigned to the project
-            const isAlreadyAssigned = employee.projects.some(p => p.id === projectId);
-            if (isAlreadyAssigned) {
-                throw new Error('Employee is already assigned to this project');
-            }
-
-            // Add project to employee's projects
-            employee.projects.push(project);
-
-            // Save the updated employee
-            await this.employeeRepository.save(employee);
-
-            // Return formatted response
-            return {
-                id: employee.id,
-                name: employee.name,
-                position: employee.position,
-                department: {
-                    id: employee.department?.id,
-                    name: employee.department?.name
-                },
-                projects: employee.projects.map(p => ({
-                    id: p.id,
-                    name: p.name
-                }))
-            };
-        } catch (error) {
-            console.error('Error assigning project:', error);
-            throw error;
+            results.push(await this.employeeRepository.save(employee));
         }
+        return results;
+    }
+
+    async deactivateInactiveEmployees() {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        const inactiveEmployees = await this.employeeRepository.find({
+            where: {
+                lastActivityDate: MoreThan(sixMonthsAgo),
+                isActive: true
+            }
+        });
+
+        for (const employee of inactiveEmployees) {
+            employee.isActive = false;
+            await this.employeeRepository.save(employee);
+        }
+
+        return inactiveEmployees;
     }
 }
-    // ... other methods ...

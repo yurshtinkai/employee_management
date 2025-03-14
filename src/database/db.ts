@@ -8,7 +8,7 @@ import { Project } from '../entities/project.entity';
 
 dotenv.config();
 
-const dbName = process.env.DB_NAME || 'employee_department_db';
+const dbName = process.env.DB_NAME || 'employee_db';
 
 async function createDatabase() {
     try {

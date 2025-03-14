@@ -34,10 +34,24 @@ export class Employee {
     @Column({ default: true })
     isActive: boolean;
 
+    @Column({ type: 'timestamp', nullable: true })
+    lastActivityDate: Date;
+
     @CreateDateColumn()
     hireDate: Date;
 
-    @ManyToMany(() => Project, project => project.employees)
-    @JoinTable()
+   
+    @ManyToMany(() => Project)
+    @JoinTable({
+        name: "employee_projects",
+        joinColumn: {
+            name: "employeeId",
+            referencedColumnName: "id"
+        },
+        inverseJoinColumn: {
+            name: "projectId",
+            referencedColumnName: "id"
+        }
+    })
     projects: Project[];
 }

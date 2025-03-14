@@ -7,6 +7,8 @@ import { initializeDatabase } from './database/db';
 import employeeRouter from './controllers/employee.controller';
 import { CronService } from './services/cron.service';
 import departmentRouter from './controllers/department.controller';
+import projectRouter from './controllers/project.controller';
+import { setupScheduledTasks } from './utils/scheduler';
 
 const app = express();
 
@@ -33,6 +35,7 @@ app.get('/health', (req, res) => {
 // API routes - make sure this matches your Postman request URL
 app.use('/api/employees', employeeRouter);
 app.use('/api/departments', departmentRouter); // 
+app.use('/api/projects', projectRouter);
 
 
 // Error handling middleware should be last
@@ -50,6 +53,7 @@ initializeDatabase()
             console.log(`Test the API at http://localhost:${port}/api/employees`);
             
             // Start cron jobs
+            setupScheduledTasks();
             cronService.startJobs();
             console.log('Cron jobs initialized');
         });
